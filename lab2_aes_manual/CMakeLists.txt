@@ -1,0 +1,5 @@
+# Lab 2: AES thuần C++ — KHÔNG dùng thư viện crypto ngoài (cryptopp, openssl, libsodium...)
+add_executable(lab2_aestool src/main.cpp)
+set_target_properties(lab2_aestool PROPERTIES OUTPUT_NAME "aestool")
+target_include_directories(lab2_aestool PRIVATE include)
+target_link_libraries(lab2_aestool PRIVATE common)

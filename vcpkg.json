@@ -1,0 +1,10 @@
+{
+  "name": "all6labs",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "cryptopp",
+    "openssl",
+    "nlohmann-json",
+    "catch2"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "_source": "NIST CAVP GCM test vectors (AES-256-GCM, 96-bit IV, 128-bit tag)",
+  "tests": [
+    {
+      "name": "Empty PT, all-zero key+IV",
+      "algorithm": "AES-256-GCM",
+      "mode": "gcm",
+      "key":        "0000000000000000000000000000000000000000000000000000000000000000",
+      "iv":         "000000000000000000000000",
+      "plaintext":  "",
+      "aad":        "",
+      "ciphertext": "",
+      "tag":        "530f8afbc74536b9a963b4f1c4cb738b"
+    },
+    {
+      "name": "16-byte PT, all-zero key+IV",
+      "algorithm": "AES-256-GCM",
+      "mode": "gcm",
+      "key":        "0000000000000000000000000000000000000000000000000000000000000000",
+      "iv":         "000000000000000000000000",
+      "plaintext":  "00000000000000000000000000000000",
+      "aad":        "",
+      "ciphertext": "cea7403d4d606b6e074ec5d3baf39d18",
+      "tag":        "d0d1c8a799996bf0265b98b5d48ab919"
+    }
+  ]
+}

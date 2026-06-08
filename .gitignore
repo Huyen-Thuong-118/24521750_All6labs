@@ -1,0 +1,13 @@
+/build/
+/build-*/
+*.user
+*.suo
+.vs/
+vcpkg_installed/
+__pycache__/
+docs/plots/*.png
+docs/plots/*.csv
+*.pem
+*.key
+*.crt
+*.der
