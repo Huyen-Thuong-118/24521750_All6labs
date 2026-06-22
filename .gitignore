@@ -1,12 +1,37 @@
+# Build output
 /build/
 /build-*/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+CMakeUserPresets.json
+CMakeLists.txt.user
+
+# IDE
 *.user
 *.suo
 .vs/
+cmake-build-*/
+
+# vcpkg
 vcpkg_installed/
+
+# Python
 __pycache__/
+*.pyc
+
+# Generated plots/CSVs (reproducible from code)
 docs/plots/*.png
 docs/plots/*.csv
+
+# Crypto key material — only test keys in repo
 *.pem
 *.key
 *.crt
