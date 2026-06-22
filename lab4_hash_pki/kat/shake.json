@@ -1,0 +1,47 @@
+{
+  "_source": "NIST FIPS 202 SHAKE example outputs (XOF)",
+  "tests": [
+    {
+      "name": "SHAKE128 empty 16 bytes",
+      "algo": "shake128",
+      "input": "",
+      "outlen": 16,
+      "expected": "7f9c2ba4e88f827d616045507605853e"
+    },
+    {
+      "name": "SHAKE128 empty 32 bytes",
+      "algo": "shake128",
+      "input": "",
+      "outlen": 32,
+      "expected": "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26"
+    },
+    {
+      "name": "SHAKE128 'abc' 32 bytes",
+      "algo": "shake128",
+      "input": "616263",
+      "outlen": 32,
+      "expected": "5881092dd818bf5cf8a3ddb793fbcba74097d5c526a6d35f97b83351940f2cc8"
+    },
+    {
+      "name": "SHAKE256 empty 32 bytes",
+      "algo": "shake256",
+      "input": "",
+      "outlen": 32,
+      "expected": "46b9dd2b0ba88d13233b3feb743eeb243fcd52ea62b81b82b50c27646ed5762f"
+    },
+    {
+      "name": "SHAKE256 empty 64 bytes",
+      "algo": "shake256",
+      "input": "",
+      "outlen": 64,
+      "expected": "46b9dd2b0ba88d13233b3feb743eeb243fcd52ea62b81b82b50c27646ed5762fd75dc4ddd8c0f200cb05019d67b592f6fc821c49479ab48640292eacb3b7c4be"
+    },
+    {
+      "name": "SHAKE256 'abc' 32 bytes",
+      "algo": "shake256",
+      "input": "616263",
+      "outlen": 32,
+      "expected": "483366601360a8771c6863080cc4114d8db44530f8f1e1ee4f94ea37e78b5739"
+    }
+  ]
+}

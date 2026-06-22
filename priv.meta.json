@@ -1,0 +1,6 @@
+{
+  "algorithm": "RSA-OAEP",
+  "creation_time": "2026-06-20T20:32:04Z",
+  "hash": "SHA-256",
+  "modulus_bits": 3072
+}

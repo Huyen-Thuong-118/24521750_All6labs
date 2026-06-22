@@ -1,0 +1,59 @@
+{
+  "description": "RSA-OAEP-SHA256 KAT vectors. RSA-OAEP is randomized so all tests are roundtrip (generate fresh keys per run).",
+  "tests": [
+    {
+      "name": "RSA-3072 OAEP roundtrip — short message (hex)",
+      "type": "roundtrip",
+      "modulus_bits": 3072,
+      "plaintext_hex": "48656c6c6f2c20576f726c6421",
+      "label": ""
+    },
+    {
+      "name": "RSA-3072 OAEP roundtrip — binary data (32 bytes)",
+      "type": "roundtrip",
+      "modulus_bits": 3072,
+      "plaintext_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "label": ""
+    },
+    {
+      "name": "RSA-3072 OAEP roundtrip — max-size message (318 bytes)",
+      "type": "roundtrip",
+      "modulus_bits": 3072,
+      "payload_size": 318,
+      "label": ""
+    },
+    {
+      "name": "RSA-4096 OAEP roundtrip",
+      "type": "roundtrip",
+      "modulus_bits": 4096,
+      "plaintext_hex": "deadbeefcafebabe",
+      "label": ""
+    },
+    {
+      "name": "RSA-3072 wrong-key negative test",
+      "type": "negative_wrong_key",
+      "modulus_bits": 3072,
+      "plaintext_hex": "deadbeef"
+    },
+    {
+      "name": "RSA-3072 tampered ciphertext negative test",
+      "type": "negative_tampered_ct",
+      "modulus_bits": 3072,
+      "plaintext_hex": "aabbccdd"
+    },
+    {
+      "name": "Hybrid roundtrip — 500-byte payload (forces AES-GCM path)",
+      "type": "hybrid_roundtrip",
+      "modulus_bits": 3072,
+      "payload_size": 500,
+      "label": ""
+    },
+    {
+      "name": "Hybrid roundtrip — large 10KB payload",
+      "type": "hybrid_roundtrip",
+      "modulus_bits": 3072,
+      "payload_size": 10240,
+      "label": ""
+    }
+  ]
+}

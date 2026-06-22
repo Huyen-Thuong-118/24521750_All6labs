@@ -1,0 +1,24 @@
+{
+  "description": "FIPS-197 AES-128 block cipher Known-Answer Tests",
+  "source": "FIPS-197 (2001) Appendix B and Appendix C.1",
+  "tests": [
+    {
+      "name": "FIPS-197 Appendix B — main example",
+      "key":        "2b7e151628aed2a6abf7158809cf4f3c",
+      "plaintext":  "3243f6a8885a308d313198a2e0370734",
+      "ciphertext": "3925841d02dc09fbdc118597196a0b32"
+    },
+    {
+      "name": "FIPS-197 Appendix C.1 — AES-128 all-zero",
+      "key":        "00000000000000000000000000000000",
+      "plaintext":  "00000000000000000000000000000000",
+      "ciphertext": "66e94bd4ef8a2c3b884cfa59ca342b2e"
+    },
+    {
+      "name": "NIST AES-128 known vector 1",
+      "key":        "000102030405060708090a0b0c0d0e0f",
+      "plaintext":  "00112233445566778899aabbccddeeff",
+      "ciphertext": "69c4e0d86a7b04300d8a8b41d0a58f54"
+    }
+  ]
+}

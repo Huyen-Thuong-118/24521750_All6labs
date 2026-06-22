@@ -1,435 +1,452 @@
-#include <common/cli_parser.hpp>
-#include "aes_service.hpp"
-#include "key_manager.hpp"
-#include "nonce_manager.hpp"
-#include "sidecar.hpp"
-
-#include <cryptopp/base64.h>
-#include <cryptopp/hex.h>
-#include <cryptopp/filters.h>
+// ─────────────────────────────────────────────────────────────────────────────
+// main.cpp — aestool: AES CLI (Lab 1)
+//
+// Commands:
+//   aestool encrypt --mode MODE --key FILE --in FILE [--out FILE]
+//                   [--iv FILE | --iv-hex HEX] [--aead] [--aad TEXT]
+//                   [--encode hex|base64|raw]
+//   aestool decrypt --mode MODE --key FILE --in FILE [--out FILE]
+//                   [--iv FILE | --iv-hex HEX] [--aead] [--aad TEXT]
+//   aestool --kat vectors.json
+//   aestool bench  --mode MODE --key-hex HEX [--size BYTES] [--rounds N]
+//
+// Key flags:
+//   --key FILE         raw binary key file (16/24/32 bytes; XTS: 32/48/64)
+//   --key-hex HEX      hex-encoded key
+//   --iv FILE          raw binary IV file
+//   --iv-hex HEX       hex-encoded IV
+// ─────────────────────────────────────────────────────────────────────────────
+#include "aes_modes.h"
 
 #include <nlohmann/json.hpp>
-
-#include <algorithm>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <string>
+#include <stdexcept>
+#include <iomanip>
 #include <chrono>
 #include <cmath>
-#include <fstream>
-#include <iostream>
 #include <numeric>
-#include <stdexcept>
-#include <string>
-#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <cryptopp/base64.h>
+#include <cryptopp/filters.h>
 
 using json = nlohmann::json;
+using Clock = std::chrono::high_resolution_clock;
+namespace fs = std::filesystem;
 
-// ─── File I/O ──────────────────────────────────────────────────────────────
-
-static std::vector<uint8_t> read_file(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) throw std::runtime_error("Cannot read: " + path);
+// ── Utility ──────────────────────────────────────────────────────────────────
+static std::vector<uint8_t> read_file(const std::string& p) {
+    std::ifstream f(p, std::ios::binary);
+    if (!f) throw std::runtime_error("Cannot open: " + p);
     return {std::istreambuf_iterator<char>(f), {}};
 }
 
-static void write_file(const std::string& path, const std::vector<uint8_t>& data) {
-    std::ofstream f(path, std::ios::binary);
-    if (!f) throw std::runtime_error("Cannot write: " + path);
-    f.write(reinterpret_cast<const char*>(data.data()), data.size());
+static void write_file(const std::string& p, const std::vector<uint8_t>& d) {
+    std::ofstream f(p, std::ios::binary);
+    if (!f) throw std::runtime_error("Cannot write: " + p);
+    f.write(reinterpret_cast<const char*>(d.data()), (std::streamsize)d.size());
 }
 
-// ─── Encoding layer ────────────────────────────────────────────────────────
+static std::vector<uint8_t> hex_to_bytes(const std::string& h) {
+    if (h.size() % 2) throw std::runtime_error("Odd hex length");
+    std::vector<uint8_t> r(h.size() / 2);
+    for (size_t i = 0; i < r.size(); i++)
+        r[i] = (uint8_t)std::stoul(h.substr(2*i, 2), nullptr, 16);
+    return r;
+}
 
-static std::vector<uint8_t> encode_data(const std::vector<uint8_t>& data,
-                                        const std::string& enc)
+static std::string bytes_to_hex(const std::vector<uint8_t>& b) {
+    std::ostringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (auto x : b) ss << std::setw(2) << (int)x;
+    return ss.str();
+}
+
+static std::string bytes_to_base64(const std::vector<uint8_t>& b) {
+    std::string result;
+    CryptoPP::Base64Encoder enc(new CryptoPP::StringSink(result), false);
+    enc.Put(b.data(), b.size());
+    enc.MessageEnd();
+    return result;
+}
+
+static std::string get_arg(int argc, char** argv, const std::string& flag, const std::string& def = "") {
+    for (int i = 1; i + 1 < argc; i++)
+        if (argv[i] == flag) return argv[i+1];
+    return def;
+}
+
+static bool has_flag(int argc, char** argv, const std::string& flag) {
+    for (int i = 1; i < argc; i++)
+        if (argv[i] == flag) return true;
+    return false;
+}
+
+// ── Load key or IV (file or hex) ─────────────────────────────────────────────
+static std::vector<uint8_t> load_secret(int argc, char** argv,
+    const std::string& file_flag, const std::string& hex_flag,
+    const std::string& name)
 {
-    using namespace CryptoPP;
-    if (enc == "hex") {
-        std::string out;
-        HexEncoder h(new StringSink(out), false /*lowercase*/);
-        h.Put(data.data(), data.size()); h.MessageEnd();
-        return std::vector<uint8_t>(out.begin(), out.end());
-    }
-    if (enc == "base64") {
-        std::string out;
-        Base64Encoder b(new StringSink(out));
-        b.Put(data.data(), data.size()); b.MessageEnd();
-        return std::vector<uint8_t>(out.begin(), out.end());
-    }
-    return data; // raw (default)
+    std::string h = get_arg(argc, argv, hex_flag);
+    std::string p = get_arg(argc, argv, file_flag);
+    if (!h.empty()) return hex_to_bytes(h);
+    if (!p.empty()) return read_file(p);
+    return {};  // empty = not provided
 }
 
-static std::vector<uint8_t> decode_data(const std::vector<uint8_t>& data,
-                                        const std::string& enc)
+// ── Sidecar JSON (stored as <outfile>.json) ───────────────────────────────────
+static std::string sidecar_path(const std::string& out) { return out + ".json"; }
+
+static void write_sidecar(const std::string& out, aes1::Mode m,
+    const std::vector<uint8_t>& iv,
+    const std::vector<uint8_t>& tag,
+    const std::vector<uint8_t>& aad)
 {
-    using namespace CryptoPP;
-    std::string in(data.begin(), data.end());
-    if (enc == "hex") {
-        std::string out;
-        StringSource(in, true, new HexDecoder(new StringSink(out)));
-        return std::vector<uint8_t>(out.begin(), out.end());
-    }
-    if (enc == "base64") {
-        std::string out;
-        StringSource(in, true, new Base64Decoder(new StringSink(out)));
-        return std::vector<uint8_t>(out.begin(), out.end());
-    }
-    return data; // raw
+    json j;
+    j["alg"] = aes1::mode_name(m);
+    j["iv"]  = bytes_to_hex(iv);
+    if (!tag.empty()) j["tag"] = bytes_to_hex(tag);
+    if (!aad.empty()) j["aad"] = bytes_to_hex(aad);
+    std::ofstream f(sidecar_path(out));
+    if (!f) throw std::runtime_error("Cannot write sidecar: " + sidecar_path(out));
+    f << j.dump(2) << "\n";
 }
 
-// ─── Key helper ────────────────────────────────────────────────────────────
-
-static std::vector<uint8_t> get_key(const common::CliArgs& args) {
-    if (common::has(args, "key-hex"))
-        return lab1::hex_to_bytes(common::get(args, "key-hex"));
-    if (common::has(args, "key-file"))
-        return lab1::load_key_hex(common::get(args, "key-file"));
-    if (common::has(args, "key"))
-        return lab1::load_key_auto(common::get(args, "key"));
-    throw std::runtime_error("Thiếu --key-hex, --key-file, hoặc --key");
+static json read_sidecar(const std::string& ct_path) {
+    auto sp = sidecar_path(ct_path);
+    if (!fs::exists(sp)) throw std::runtime_error("Sidecar not found: " + sp);
+    std::ifstream f(sp);
+    json j; f >> j;
+    return j;
 }
 
-// ─── KAT runner ────────────────────────────────────────────────────────────
+// ── Nonce reuse check (for CTR / CCM / GCM) ───────────────────────────────────
+static void check_nonce_reuse(const std::string& out, const std::vector<uint8_t>& iv) {
+    auto sp = sidecar_path(out);
+    if (!fs::exists(sp)) return;  // first use
+    try {
+        std::ifstream f(sp);
+        json j; f >> j;
+        if (j.contains("iv") && j["iv"].get<std::string>() == bytes_to_hex(iv)) {
+            throw std::runtime_error(
+                "NONCE REUSE DETECTED: IV already used for this output file.\n"
+                "Reusing a nonce with the same key destroys confidentiality (two-time pad).\n"
+                "Generate a new key or use a fresh IV.");
+        }
+    } catch (const json::exception&) { /* corrupt sidecar, allow */ }
+}
 
-static void run_kat_file(const std::string& json_path) {
-    std::ifstream f(json_path);
-    if (!f) throw std::runtime_error("Cannot open KAT file: " + json_path);
-    json j = json::parse(f);
+// ── ECB safety check ─────────────────────────────────────────────────────────
+constexpr size_t ECB_MAX = 16 * 1024;  // 16 KiB
 
-    // File-level mode/algo as defaults; each test can override
-    std::string file_mode = j.value("mode", "cbc");
-    std::string file_algo = j.value("algorithm", json_path);
+static void ecb_safety(const std::vector<uint8_t>& plain, bool allow_ecb) {
+    std::cerr << "\033[33m[WARNING] ECB mode leaks data patterns (identical blocks → identical ciphertext).\n"
+              << "         Never use ECB in production. Use GCM instead.\033[0m\n";
+    if (plain.size() > ECB_MAX && !allow_ecb) {
+        throw std::runtime_error(
+            "ECB blocked: file > 16 KiB (use --allow-ecb to override). "
+            "This restriction exists because ECB is dangerously insecure for large files.");
+    }
+}
 
-    std::cout << "KAT: " << file_algo << " [" << json_path << "]\n";
+// ── KAT runner ───────────────────────────────────────────────────────────────
+static int run_kat(const std::string& path) {
+    auto raw = read_file(path);
+    json j = json::parse(raw.begin(), raw.end());
+    int ok = 0, fail = 0;
 
-    int pass = 0, fail = 0;
-    for (auto& t : j["tests"]) {
-        std::string name = t.value("name", "case-" + std::to_string(pass + fail + 1));
-
-        // Per-test mode overrides file-level
-        std::string mode_str = t.value("mode", file_mode);
-        auto mode = lab1::mode_from_string(mode_str);
-
-        auto key    = lab1::hex_to_bytes(t["key"].get<std::string>());
-        auto pt_hex = t.value("plaintext", "");
-        auto iv_hex = t.value("iv", "");
-        auto aad_hex = t.value("aad", "");
-        auto exp_ct_hex  = t.value("ciphertext", "");
-        auto exp_tag_hex = t.value("tag", "");
-
-        std::vector<uint8_t> pt, iv, aad, exp_ct, exp_tag;
-        if (!pt_hex.empty())      pt      = lab1::hex_to_bytes(pt_hex);
-        if (!iv_hex.empty())      iv      = lab1::hex_to_bytes(iv_hex);
-        if (!aad_hex.empty())     aad     = lab1::hex_to_bytes(aad_hex);
-        if (!exp_ct_hex.empty())  exp_ct  = lab1::hex_to_bytes(exp_ct_hex);
-        if (!exp_tag_hex.empty()) exp_tag = lab1::hex_to_bytes(exp_tag_hex);
-
+    std::cout << "KAT: " << path << "\n";
+    for (auto& tc : j["tests"]) {
+        std::string name = tc.value("name", "?");
         try {
-            // no_padding=true: NIST vectors use full blocks, no PKCS7
-            auto res = lab1::aes_encrypt(mode, key, pt, iv, aad, /*no_padding=*/true);
+            auto mode = aes1::parse_mode(tc["mode"].get<std::string>());
+            auto key  = hex_to_bytes(tc["key"].get<std::string>());
+            auto iv   = tc.contains("iv") ? hex_to_bytes(tc["iv"].get<std::string>())
+                                           : std::vector<uint8_t>{};
+            std::string pt_hex = tc.contains("plaintext") ? tc["plaintext"].get<std::string>() : "";
+            auto pt  = pt_hex.empty() ? std::vector<uint8_t>{} : hex_to_bytes(pt_hex);
+            auto aad  = tc.contains("aad") ? hex_to_bytes(tc["aad"].get<std::string>())
+                                            : std::vector<uint8_t>{};
 
-            bool ct_ok  = (res.ciphertext == exp_ct);
-            bool tag_ok = exp_tag.empty() || (res.tag == exp_tag);
+            if (!tc.contains("ciphertext")) {
+                // Roundtrip test: no expected CT — encrypt then decrypt, verify pt recovered
+                auto res = aes1::encrypt(mode, key, iv, pt, aad);
+                auto use_iv = res.iv.empty() ? iv : res.iv;
+                auto dec = aes1::decrypt(mode, key, use_iv, res.ciphertext, res.tag, aad);
+                bool pass = (dec == pt);
+                if (pass) { std::cout << "  [PASS] " << name << " (roundtrip)\n"; ok++; }
+                else       { std::cout << "  [FAIL] " << name << " (roundtrip)\n"; fail++; }
+                continue;
+            }
 
-            if (ct_ok && tag_ok) {
-                ++pass;
-                std::cout << "  PASS [" << name << "]\n";
-            } else {
-                ++fail;
-                std::cout << "  FAIL [" << name << "]";
-                if (!ct_ok)  std::cout << " ciphertext-mismatch";
-                if (!tag_ok) std::cout << " tag-mismatch";
-                std::cout << "\n";
-                if (!ct_ok) {
-                    std::cout << "    expected: " << exp_ct_hex << "\n";
-                    std::cout << "    got     : " << lab1::bytes_to_hex(res.ciphertext) << "\n";
+            std::string ct_hex = tc["ciphertext"].get<std::string>();
+            auto exp = ct_hex.empty() ? std::vector<uint8_t>{} : hex_to_bytes(ct_hex);
+            auto res = aes1::encrypt(mode, key, iv, pt, aad);
+
+            bool pass = (res.ciphertext == exp);
+            if (tc.contains("tag")) {
+                auto exp_tag = hex_to_bytes(tc["tag"].get<std::string>());
+                pass = pass && (res.tag == exp_tag);
+            }
+
+            if (pass) { std::cout << "  [PASS] " << name << "\n"; ok++; }
+            else {
+                std::cout << "  [FAIL] " << name << "\n";
+                std::cout << "    ct expected: " << bytes_to_hex(exp) << "\n";
+                std::cout << "    ct got:      " << bytes_to_hex(res.ciphertext) << "\n";
+                if (tc.contains("tag")) {
+                    auto exp_tag = hex_to_bytes(tc["tag"].get<std::string>());
+                    std::cout << "    tag expected: " << bytes_to_hex(exp_tag) << "\n";
+                    std::cout << "    tag got:      " << bytes_to_hex(res.tag) << "\n";
                 }
-                if (!tag_ok) {
-                    std::cout << "    exp tag : " << exp_tag_hex << "\n";
-                    std::cout << "    got tag : " << lab1::bytes_to_hex(res.tag) << "\n";
-                }
+                fail++;
             }
         } catch (const std::exception& e) {
-            ++fail;
-            std::cout << "  FAIL [" << name << "] exception: " << e.what() << "\n";
+            std::cout << "  [ERROR] " << name << ": " << e.what() << "\n";
+            fail++;
         }
     }
-
-    std::cout << "  => Passed " << pass << "/" << (pass + fail) << "\n\n";
-    if (fail > 0)
-        throw std::runtime_error("KAT FAILED: " + std::to_string(fail) +
-                                 " vector(s) failed in " + json_path);
+    std::cout << "\n" << ok << " PASS, " << fail << " FAIL\n";
+    return fail ? 1 : 0;
 }
 
-// ─── Benchmark ─────────────────────────────────────────────────────────────
+// ── Benchmark — outputs CSV (6 sizes × modes) ────────────────────────────────
+static int run_bench(int argc, char** argv) {
+    auto mode_str = get_arg(argc, argv, "--mode");
+    auto key      = load_secret(argc, argv, "--key", "--key-hex", "Key");
+    int rounds    = std::stoi(get_arg(argc, argv, "--rounds", "30"));
+    auto size_str = get_arg(argc, argv, "--size");
 
-static void run_benchmark(const std::vector<uint8_t>& key) {
-    const std::vector<std::pair<std::string, lab1::AesMode>> modes = {
-        {"cbc", lab1::AesMode::CBC}, {"cfb", lab1::AesMode::CFB},
-        {"ofb", lab1::AesMode::OFB}, {"ctr", lab1::AesMode::CTR},
-        {"gcm", lab1::AesMode::GCM}, {"ccm", lab1::AesMode::CCM},
-    };
-    const std::vector<std::size_t> sizes = {
-        1024, 4096, 16384, 262144, 1048576, 8388608
-    };
+    if (key.empty()) throw std::runtime_error("--key or --key-hex required for bench");
 
-    using clock  = std::chrono::high_resolution_clock;
-    using ms_dur = std::chrono::duration<double, std::milli>;
+    // 6 benchmark sizes from rubric (all block-aligned)
+    const std::vector<size_t> default_sizes = {1024, 4096, 16384, 262144, 1048576, 8388608};
+    std::vector<size_t> sizes = size_str.empty()
+        ? default_sizes : std::vector<size_t>{ std::stoull(size_str) };
 
-    std::cout << "algo,mode,size_bytes,latency_ms_mean,latency_ms_median,"
-                 "latency_ms_stddev,ci95_ms,throughput_mb_s\n";
-    std::cout << std::fixed;
-    std::cout.precision(4);
+    std::vector<aes1::Mode> modes;
+    if (!mode_str.empty()) {
+        modes = { aes1::parse_mode(mode_str) };
+    } else {
+        modes = { aes1::Mode::ECB, aes1::Mode::CBC, aes1::Mode::OFB,
+                  aes1::Mode::CFB, aes1::Mode::CTR, aes1::Mode::XTS,
+                  aes1::Mode::CCM, aes1::Mode::GCM };
+    }
 
-    for (auto& [mode_name, mode] : modes) {
-        for (auto sz : sizes) {
-            std::vector<uint8_t> pt(sz, 0xAB);
+#ifdef _WIN32
+    const std::string os_name = "Windows";
+#else
+    const std::string os_name = "Linux";
+#endif
 
-            // Warmup ~1 s
-            auto t_end = clock::now() + std::chrono::seconds(1);
-            while (clock::now() < t_end)
-                lab1::aes_encrypt(mode, key, pt);
+    std::cout << "algo,mode,os,size_bytes,latency_ms_mean,latency_ms_median,"
+              << "latency_ms_stddev,ci95_ms,throughput_mb_s\n";
 
-            const int N = 30;
-            std::vector<double> samples(N);
-            for (int i = 0; i < N; ++i) {
-                auto t0 = clock::now();
-                lab1::aes_encrypt(mode, key, pt);
-                samples[i] = ms_dur(clock::now() - t0).count();
+    for (auto mode : modes) {
+        size_t iv_len = aes1::required_iv_len(mode);
+
+        // Quick 16-byte probe to verify key/mode compatibility before large allocations
+        {
+            bool compat = true;
+            try {
+                auto p_iv = (iv_len > 0) ? aes1::generate_iv(iv_len) : std::vector<uint8_t>{};
+                std::vector<uint8_t> probe(16, 0);
+                aes1::encrypt(mode, key, p_iv, probe);
+            } catch (...) { compat = false; }
+            if (!compat) {
+                std::cerr << "# skip " << aes1::mode_name(mode) << " (incompatible key size)\n";
+                continue;
+            }
+        }
+
+        for (size_t sz : sizes) {
+            auto iv = (iv_len > 0) ? aes1::generate_iv(iv_len) : std::vector<uint8_t>{};
+            std::vector<uint8_t> pt(sz, 0xaa);
+
+            // Warm-up ~1s
+            auto wend = Clock::now() + std::chrono::seconds(1);
+            while (Clock::now() < wend) {
+                if (iv_len > 0) iv = aes1::generate_iv(iv_len);
+                aes1::encrypt(mode, key, iv, pt);
             }
 
-            std::sort(samples.begin(), samples.end());
-            double sum = std::accumulate(samples.begin(), samples.end(), 0.0);
-            double mean   = sum / N;
-            double median = samples[N / 2];
-            double sq = 0;
-            for (auto s : samples) sq += (s - mean) * (s - mean);
-            double stddev = std::sqrt(sq / N);
-            double ci95   = 1.96 * stddev / std::sqrt(static_cast<double>(N));
-            double tput   = (sz / 1048576.0) / (mean / 1000.0);
+            std::vector<double> times(rounds);
+            for (int r = 0; r < rounds; r++) {
+                if (iv_len > 0) iv = aes1::generate_iv(iv_len);
+                auto t0 = Clock::now();
+                aes1::encrypt(mode, key, iv, pt);
+                times[r] = std::chrono::duration<double>(Clock::now() - t0).count();
+            }
 
-            std::cout << "AES-256," << mode_name << "," << sz << ","
-                      << mean << "," << median << "," << stddev << ","
-                      << ci95 << "," << tput << "\n";
+            std::sort(times.begin(), times.end());
+            double mean = std::accumulate(times.begin(), times.end(), 0.0) / rounds;
+            double med  = times[rounds / 2];
+            double var  = 0;
+            for (auto t : times) var += (t - mean) * (t - mean);
+            double sd   = std::sqrt(var / rounds);
+            double ci95 = 1.960 * sd / std::sqrt((double)rounds);
+            double mb   = sz / (1024.0 * 1024.0);
+
+            std::string mname = aes1::mode_name(mode);
+            if (mname.size() > 4 && mname.substr(0, 4) == "AES-") mname = mname.substr(4);
+
+            std::cout << std::fixed << std::setprecision(4);
+            std::cout << "AES-" << (key.size() * 8) << ","
+                      << mname << ","
+                      << os_name << ","
+                      << sz << ","
+                      << mean * 1e3 << ","
+                      << med  * 1e3 << ","
+                      << sd   * 1e3 << ","
+                      << ci95 * 1e3 << ","
+                      << mb / mean << "\n";
         }
     }
+    return 0;
 }
 
-// ─── Usage ─────────────────────────────────────────────────────────────────
-
-static void print_usage() {
-    std::cout << R"(aestool — Lab 1: AES via Crypto++
-
-Commands:
-  keygen   --out key.hex
-
-  encrypt  --mode <ecb|cbc|cfb|ofb|ctr|xts|ccm|gcm>
-           --key-hex <hex> | --key-file <file> | --key <file>
-           --in <file> | --text <string>
-           [--iv <hex>] [--aad-file <file>] [--aad-text <str>]
-           [--encode hex|base64|raw]  (default: raw)
-           [--out <file>]
-           [--allow-ecb]              (required for ECB mode)
-
-  decrypt  --mode <mode>
-           --key-hex <hex> | --key-file <file> | --key <file>
-           --in <file>
-           [--iv <hex>]    (or auto-loaded from sidecar)
-           [--tag <hex>]   (or auto-loaded from sidecar)
-           [--aad-file <file>] [--aad-text <str>]
-           [--encode hex|base64|raw]
-           [--out <file>]
-
-  kat      <vectors.json> [more.json ...]
-           Runs NIST KAT vectors; prints PASS/FAIL per case.
-
-  benchmark [--key-hex <hex> | --key-file <file>]
-           Measures encrypt throughput for CBC/CFB/OFB/CTR/GCM/CCM
-           across 6 payload sizes; outputs CSV to stdout.
-
-Sidecar: after encrypt, <out>.hdr.json stores alg/mode/iv/aad/tag.
-         Decrypt auto-loads sidecar if --iv/--tag not given.
-)";
+// ── main ─────────────────────────────────────────────────────────────────────
+static void usage() {
+    std::cerr <<
+        "aestool — AES-128/192/256 all modes (Lab 1)\n\n"
+        "  aestool encrypt --mode MODE --key FILE --in FILE [opts]\n"
+        "  aestool decrypt --mode MODE --key FILE --in FILE [opts]\n"
+        "  aestool --kat   vectors.json\n"
+        "  aestool bench   [--mode MODE] --key-hex HEX [--size BYTES] [--rounds N]\n"
+        "                   Output: CSV to stdout (6 sizes × mode; all 8 modes if --mode omitted)\n\n"
+        "Modes: ecb | cbc | ofb | cfb | ctr | xts | ccm | gcm\n\n"
+        "Options:\n"
+        "  --key FILE / --key-hex HEX   key file or hex string\n"
+        "  --iv  FILE / --iv-hex  HEX   IV file or hex string (auto-gen if omitted)\n"
+        "  --in  FILE                   input file\n"
+        "  --out FILE                   output file (+ sidecar .json)\n"
+        "  --text STRING                inline plaintext (encrypt)\n"
+        "  --aead                       enable AEAD (required for ccm/gcm)\n"
+        "  --aad TEXT                   AAD string (AEAD only)\n"
+        "  --aad-file FILE              AAD from file\n"
+        "  --encode hex|base64|raw      output encoding (default: hex on screen)\n"
+        "  --allow-ecb                  override ECB 16 KiB limit\n";
 }
 
-// ─── main ──────────────────────────────────────────────────────────────────
+int main(int argc, char** argv) {
+    if (argc < 2) { usage(); return 1; }
+    std::string cmd = argv[1];
 
-int main(int argc, char* argv[]) {
     try {
-        auto args = common::parse_args(argc, argv);
-        std::string encode = common::get(args, "encode", "raw");
-
-        // ── keygen ──────────────────────────────────────────────────────
-        if (args.command == "keygen") {
-            auto key = lab1::keygen_aes256();
-            std::string out = common::get(args, "out", "key.hex");
-            lab1::save_key_hex(out, key);
-            std::cout << "Key saved : " << out << "\n";
-            std::cout << "Key (hex) : " << lab1::bytes_to_hex(key) << "\n";
-
-        // ── encrypt ─────────────────────────────────────────────────────
-        } else if (args.command == "encrypt") {
-            auto mode_str = common::get(args, "mode", "gcm");
-            auto mode     = lab1::mode_from_string(mode_str);
-            auto key      = get_key(args);
-
-            // ECB safety gate
-            if (mode == lab1::AesMode::ECB) {
-                std::cerr << "WARNING: ECB is insecure — identical plaintext blocks "
-                             "produce identical ciphertext (pattern leakage).\n";
-                if (!common::has(args, "allow-ecb"))
-                    throw std::runtime_error("ECB requires --allow-ecb to proceed");
-            }
-
-            // Load plaintext
-            std::vector<uint8_t> plaintext;
-            if (common::has(args, "in")) {
-                plaintext = read_file(common::get(args, "in"));
-            } else if (common::has(args, "text")) {
-                auto s = common::get(args, "text");
-                plaintext.assign(s.begin(), s.end());
-            } else {
-                throw std::runtime_error("Thiếu --in <file> hoặc --text <string>");
-            }
-
-            // ECB size limit: > 16 KiB is blocked
-            if (mode == lab1::AesMode::ECB && plaintext.size() > 16384)
-                throw std::runtime_error(
-                    "ECB: input > 16 KiB is blocked for security. Use a different mode.");
-
-            // IV: user-provided or auto-generated
-            std::vector<uint8_t> iv_in;
-            if (common::has(args, "iv"))
-                iv_in = lab1::hex_to_bytes(common::get(args, "iv"));
-            else
-                iv_in = lab1::generate_iv(mode_str);
-
-            lab1::validate_iv(mode_str, iv_in);
-
-            // AAD
-            std::vector<uint8_t> aad;
-            if (common::has(args, "aad-file"))
-                aad = read_file(common::get(args, "aad-file"));
-            else if (common::has(args, "aad-text")) {
-                auto s = common::get(args, "aad-text");
-                aad.assign(s.begin(), s.end());
-            }
-
-            // Nonce-reuse guard for stream/AEAD modes
-            if (mode == lab1::AesMode::CTR ||
-                mode == lab1::AesMode::CCM ||
-                mode == lab1::AesMode::GCM)
-            {
-                lab1::check_and_record_nonce(
-                    lab1::bytes_to_hex(key), lab1::bytes_to_hex(iv_in));
-            }
-
-            auto result = lab1::aes_encrypt(mode, key, plaintext, iv_in, aad);
-
-            std::string out = common::get(args, "out", "out.enc");
-            write_file(out, encode_data(result.ciphertext, encode));
-
-            // Write sidecar
-            lab1::SidecarMeta meta;
-            meta.alg  = "AES-256";
-            meta.mode = mode_str;
-            meta.iv   = result.iv;
-            meta.aad  = aad;
-            meta.tag  = result.tag;
-            lab1::sidecar_write(out, meta);
-
-            std::cout << "Encrypted -> " << out << "\n";
-            std::cout << "Sidecar   -> " << out << ".hdr.json\n";
-            if (!result.iv.empty())
-                std::cout << "IV  : " << lab1::bytes_to_hex(result.iv) << "\n";
-            if (!result.tag.empty())
-                std::cout << "Tag : " << lab1::bytes_to_hex(result.tag) << "\n";
-
-        // ── decrypt ─────────────────────────────────────────────────────
-        } else if (args.command == "decrypt") {
-            auto key = get_key(args);
-
-            std::string in_path = common::get(args, "in", "");
-            if (in_path.empty())
-                throw std::runtime_error("Thiếu --in <file>");
-
-            // Try to auto-load sidecar
-            bool has_sidecar = false;
-            lab1::SidecarMeta meta;
-            try { meta = lab1::sidecar_read(in_path); has_sidecar = true; }
-            catch (...) {}
-
-            std::string mode_str = common::get(args, "mode",
-                has_sidecar ? meta.mode : "gcm");
-            auto mode = lab1::mode_from_string(mode_str);
-
-            std::vector<uint8_t> iv, tag, aad;
-
-            if (common::has(args, "iv"))
-                iv = lab1::hex_to_bytes(common::get(args, "iv"));
-            else if (has_sidecar)
-                iv = meta.iv;
-            else if (mode != lab1::AesMode::ECB)
-                throw std::runtime_error(
-                    "Thiếu --iv (sidecar không tìm thấy tại " + in_path + ".hdr.json)");
-
-            lab1::validate_iv(mode_str, iv);
-
-            if (common::has(args, "tag"))
-                tag = lab1::hex_to_bytes(common::get(args, "tag"));
-            else if (has_sidecar)
-                tag = meta.tag;
-
-            if (common::has(args, "aad-file"))
-                aad = read_file(common::get(args, "aad-file"));
-            else if (common::has(args, "aad-text")) {
-                auto s = common::get(args, "aad-text");
-                aad.assign(s.begin(), s.end());
-            } else if (has_sidecar)
-                aad = meta.aad;
-
-            auto raw        = read_file(in_path);
-            auto ciphertext = decode_data(raw, encode);
-
-            auto plaintext = lab1::aes_decrypt(mode, key, ciphertext, iv, tag, aad);
-
-            std::string out = common::get(args, "out", "out.dec");
-            write_file(out, plaintext);
-            std::cout << "Decrypted -> " << out << "\n";
-
-        // ── kat ─────────────────────────────────────────────────────────
-        } else if (args.command == "kat") {
-            if (args.positional.empty())
-                throw std::runtime_error("Usage: aestool kat <vectors.json> [...]");
-            int total_fail = 0;
-            for (auto& p : args.positional) {
-                try { run_kat_file(p); }
-                catch (const std::exception& e) {
-                    std::cerr << e.what() << "\n";
-                    ++total_fail;
-                }
-            }
-            if (total_fail > 0)
-                return 1;
-
-        // ── benchmark ───────────────────────────────────────────────────
-        } else if (args.command == "benchmark") {
-            std::vector<uint8_t> key;
-            if (common::has(args, "key-hex"))
-                key = lab1::hex_to_bytes(common::get(args, "key-hex"));
-            else if (common::has(args, "key-file"))
-                key = lab1::load_key_hex(common::get(args, "key-file"));
-            else if (common::has(args, "key"))
-                key = lab1::load_key_auto(common::get(args, "key"));
-            else
-                key = lab1::keygen_aes256();
-            run_benchmark(key);
-
-        } else {
-            print_usage();
+        // ── KAT ────────────────────────────────────────────────────────────
+        if (cmd == "--kat") {
+            if (argc < 3) throw std::runtime_error("--kat requires a path");
+            return run_kat(argv[2]);
         }
+
+        // ── Bench ──────────────────────────────────────────────────────────
+        if (cmd == "bench") return run_bench(argc, argv);
+
+        // ── Encrypt / Decrypt ──────────────────────────────────────────────
+        if (cmd != "encrypt" && cmd != "decrypt") { usage(); return 1; }
+        bool do_encrypt = (cmd == "encrypt");
+
+        auto mode_str = get_arg(argc, argv, "--mode");
+        if (mode_str.empty()) throw std::runtime_error("--mode required");
+        auto mode = aes1::parse_mode(mode_str);
+
+        // Key
+        auto key = load_secret(argc, argv, "--key", "--key-hex", "Key");
+        if (key.empty()) throw std::runtime_error("--key or --key-hex required");
+
+        // IV
+        auto iv = load_secret(argc, argv, "--iv", "--iv-hex", "IV");
+
+        // AAD
+        std::string aad_text = get_arg(argc, argv, "--aad");
+        std::string aad_file = get_arg(argc, argv, "--aad-file");
+        std::vector<uint8_t> aad;
+        if (!aad_file.empty()) aad = read_file(aad_file);
+        else if (!aad_text.empty()) aad.assign(aad_text.begin(), aad_text.end());
+
+        // Input
+        std::vector<uint8_t> input;
+        std::string text = get_arg(argc, argv, "--text");
+        std::string in_p = get_arg(argc, argv, "--in");
+        if (!text.empty()) input.assign(text.begin(), text.end());
+        else if (!in_p.empty()) input = read_file(in_p);
+        else throw std::runtime_error("--in FILE or --text required");
+
+        // Output path
+        std::string out_p   = get_arg(argc, argv, "--out");
+        std::string encode  = get_arg(argc, argv, "--encode");
+        bool allow_ecb      = has_flag(argc, argv, "--allow-ecb");
+
+        // ── Encrypt ────────────────────────────────────────────────────────
+        if (do_encrypt) {
+            // Safety checks
+            if (mode == aes1::Mode::ECB) ecb_safety(input, allow_ecb);
+
+            // Nonce-reuse check (CTR/CCM/GCM with explicit IV + output file)
+            if (!out_p.empty() && !iv.empty() &&
+                (mode == aes1::Mode::CTR || mode == aes1::Mode::CCM || mode == aes1::Mode::GCM)) {
+                check_nonce_reuse(out_p, iv);
+            }
+
+            auto res = aes1::encrypt(mode, key, iv, input, aad);
+
+            // Output ciphertext
+            if (!out_p.empty()) {
+                write_file(out_p, res.ciphertext);
+                write_sidecar(out_p, mode, res.iv, res.tag, aad);
+                std::cerr << "Encrypted " << input.size() << " B → " << out_p
+                          << " (+" << sidecar_path(out_p) << ")\n";
+            }
+            if (out_p.empty() || encode == "hex" || encode == "base64") {
+                if (encode == "base64")
+                    std::cout << bytes_to_base64(res.ciphertext) << "\n";
+                else
+                    std::cout << bytes_to_hex(res.ciphertext) << "\n";
+            }
+            if (!res.tag.empty()) {
+                std::cerr << "Tag: " << bytes_to_hex(res.tag) << "\n";
+            }
+            if (!res.iv.empty() && iv.empty()) {
+                std::cerr << "IV (auto-gen): " << bytes_to_hex(res.iv) << "\n";
+            }
+            return 0;
+        }
+
+        // ── Decrypt ────────────────────────────────────────────────────────
+        // Try to load IV and tag from sidecar if not provided on CLI
+        std::vector<uint8_t> tag;
+        if (iv.empty() && !in_p.empty()) {
+            auto sc = read_sidecar(in_p);
+            if (sc.contains("iv"))  iv  = hex_to_bytes(sc["iv"].get<std::string>());
+            if (sc.contains("tag")) tag = hex_to_bytes(sc["tag"].get<std::string>());
+            if (sc.contains("aad") && aad.empty())
+                aad = hex_to_bytes(sc["aad"].get<std::string>());
+        }
+        if (iv.empty() && mode != aes1::Mode::ECB)
+            throw std::runtime_error("--iv or sidecar required for decrypt");
+
+        auto pt = aes1::decrypt(mode, key, iv, input, tag, aad);
+
+        if (!out_p.empty()) {
+            write_file(out_p, pt);
+            std::cerr << "Decrypted " << input.size() << " B → " << out_p << "\n";
+        } else {
+            // Print as text if printable, else hex
+            bool printable = true;
+            for (auto c : pt) if (c < 0x09 || (c > 0x0d && c < 0x20) || c == 0x7f) { printable = false; break; }
+            if (printable && encode != "hex")
+                std::cout << std::string(pt.begin(), pt.end()) << "\n";
+            else
+                std::cout << bytes_to_hex(pt) << "\n";
+        }
+        return 0;
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
-    return 0;
 }

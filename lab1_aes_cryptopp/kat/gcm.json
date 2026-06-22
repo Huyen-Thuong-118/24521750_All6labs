@@ -1,25 +1,59 @@
 {
-  "_source": "NIST CAVP GCM test vectors (AES-256-GCM, 96-bit IV, 128-bit tag)",
+  "description": "NIST SP 800-38D GCM Known Answer Tests",
+  "source": "NIST SP 800-38D Appendix B Test Cases 1-6 (AES-128 and AES-256, tag=128-bit)",
   "tests": [
     {
-      "name": "Empty PT, all-zero key+IV",
-      "algorithm": "AES-256-GCM",
+      "name": "NIST TC1 AES-128-GCM empty plaintext empty AAD",
+      "mode": "gcm",
+      "key":        "00000000000000000000000000000000",
+      "iv":         "000000000000000000000000",
+      "plaintext":  "",
+      "ciphertext": "",
+      "tag":        "58e2fccefa7e3061367f1d57a4e7455a"
+    },
+    {
+      "name": "NIST TC2 AES-128-GCM 16-byte zero plaintext",
+      "mode": "gcm",
+      "key":        "00000000000000000000000000000000",
+      "iv":         "000000000000000000000000",
+      "plaintext":  "00000000000000000000000000000000",
+      "ciphertext": "0388dace60b6a392f328c2b971b2fe78",
+      "tag":        "ab6e47d42cec13bdf53a67b21257bddf"
+    },
+    {
+      "name": "NIST TC3 AES-128-GCM 64-byte plaintext no AAD",
+      "mode": "gcm",
+      "key":        "feffe9928665731c6d6a8f9467308308",
+      "iv":         "cafebabefacedbaddecaf888",
+      "plaintext":  "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255",
+      "ciphertext": "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091473f5985",
+      "tag":        "4d5c2af327cd64a62cf35abd2ba6fab4"
+    },
+    {
+      "name": "NIST TC4 AES-128-GCM 60-byte plaintext with 20-byte AAD",
+      "mode": "gcm",
+      "key":        "feffe9928665731c6d6a8f9467308308",
+      "iv":         "cafebabefacedbaddecaf888",
+      "aad":        "feedfacedeadbeeffeedfacedeadbeefabaddad2",
+      "plaintext":  "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39",
+      "ciphertext": "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091",
+      "tag":        "5bc94fbc3221a5db94fae95ae7121a47"
+    },
+    {
+      "name": "NIST TC5 AES-256-GCM empty plaintext empty AAD",
       "mode": "gcm",
       "key":        "0000000000000000000000000000000000000000000000000000000000000000",
       "iv":         "000000000000000000000000",
       "plaintext":  "",
-      "aad":        "",
       "ciphertext": "",
       "tag":        "530f8afbc74536b9a963b4f1c4cb738b"
     },
     {
-      "name": "16-byte PT, all-zero key+IV",
-      "algorithm": "AES-256-GCM",
+      "name": "NIST TC6 AES-256-GCM 16-byte zero plaintext",
       "mode": "gcm",
       "key":        "0000000000000000000000000000000000000000000000000000000000000000",
       "iv":         "000000000000000000000000",
       "plaintext":  "00000000000000000000000000000000",
-      "aad":        "",
       "ciphertext": "cea7403d4d606b6e074ec5d3baf39d18",
       "tag":        "d0d1c8a799996bf0265b98b5d48ab919"
     }
