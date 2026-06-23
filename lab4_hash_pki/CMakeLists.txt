@@ -41,6 +41,10 @@ target_link_libraries(lab4_tests PRIVATE
     Catch2::Catch2WithMain
 )
 
+# ─── gen_collision (MD5 Wang et al. collision demo) ─────────────────────────
+add_executable(gen_collision attacks/md5_collision/gen_collision.cpp)
+target_link_libraries(gen_collision PRIVATE OpenSSL::Crypto)
+
 include(CTest)
 include(Catch)
 catch_discover_tests(lab4_tests)

@@ -36,7 +36,7 @@ static void set_pss_params(EVP_PKEY_CTX* ctx) {
         throw std::runtime_error("Failed to set PSS parameters");
 }
 
-} // namespace
+} 
 
 std::pair<std::string, std::string> keygen_rsa() {
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);

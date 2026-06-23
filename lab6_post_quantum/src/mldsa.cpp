@@ -74,7 +74,6 @@ std::vector<uint8_t> mldsa_sign(const std::string& priv_pem,
     EVP_PKEY* pkey = load_priv(priv_pem);
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 
-    // NULL digest → pure ML-DSA (no external pre-hash, FIPS 204)
     if (EVP_DigestSignInit(ctx, nullptr, nullptr, nullptr, pkey) != 1) {
         EVP_MD_CTX_free(ctx); EVP_PKEY_free(pkey);
         throw std::runtime_error("ML-DSA DigestSignInit failed");

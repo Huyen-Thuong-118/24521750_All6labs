@@ -40,14 +40,11 @@ static void hmac_sha256(const uint8_t* K, size_t Klen,
     HMAC(EVP_sha256(), K, static_cast<int>(Klen), buf, total, out, &outlen);
 }
 
-// ─── RFC 6979 k-generation for P-256 + SHA-256 ──────────────────────────────
 static BIGNUM* rfc6979_k(const BIGNUM* priv, const uint8_t h[32], const BIGNUM* q)
 {
-    // int2octets(x)
     uint8_t bx[32] = {};
     BN_bn2binpad(priv, bx, 32);
 
-    // bits2octets(h1): h1 mod q, then pad to 32 bytes
     BIGNUM* h1 = BN_bin2bn(h, 32, nullptr);
     if (BN_cmp(h1, q) >= 0) BN_sub(h1, h1, q);
     uint8_t bh[32] = {};
@@ -87,11 +84,9 @@ static std::vector<uint8_t> do_sign(EC_KEY* key, const uint8_t hash[32])
 
     auto ctx = std::unique_ptr<BN_CTX, decltype(&BN_CTX_free)>(BN_CTX_new(), BN_CTX_free);
 
-    // R = k·G
     EC_POINT* R = EC_POINT_new(grp);
     EC_POINT_mul(grp, R, k, nullptr, nullptr, ctx.get());
 
-    // r = R.x mod q
     BIGNUM* r = BN_new();
     EC_POINT_get_affine_coordinates(grp, R, r, nullptr, ctx.get());
     BN_mod(r, r, order, ctx.get());
@@ -101,8 +96,7 @@ static std::vector<uint8_t> do_sign(EC_KEY* key, const uint8_t hash[32])
         BN_free(r); BN_free(k);
         throw std::runtime_error("ECDSA sign: degenerate r");
     }
-
-    // s = k⁻¹·(h + r·x) mod q
+    
     BIGNUM* h_bn = BN_bin2bn(hash, 32, nullptr);
     BIGNUM* kinv = BN_mod_inverse(nullptr, k, order, ctx.get());
     BIGNUM* s    = BN_new();
@@ -116,7 +110,6 @@ static std::vector<uint8_t> do_sign(EC_KEY* key, const uint8_t hash[32])
         throw std::runtime_error("ECDSA sign: degenerate s");
     }
 
-    // Encode as DER
     ECDSA_SIG* sig = ECDSA_SIG_new();
     ECDSA_SIG_set0(sig, r, s); // takes ownership
 

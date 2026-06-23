@@ -39,7 +39,7 @@ static std::string pub_pem_to_b64(const std::string& pub_pem) {
     return to_base64(der);
 }
 
-} // namespace
+}
 
 PqCert cert_issue(const std::string& ca_priv_pem,
                    const std::string& subject,
@@ -50,8 +50,6 @@ PqCert cert_issue(const std::string& ca_priv_pem,
     cert.subject    = subject;
     cert.public_key = pub_pem_to_b64(sub_pub_pem);
     cert.issuer     = issuer;
-
-    // Sign canonical data with CA's ML-DSA-44 private key
     auto data = canonical_bytes(cert);
     auto sig  = mldsa_sign(ca_priv_pem, data);
     cert.signature = to_base64(sig);
@@ -63,7 +61,7 @@ bool cert_verify(const std::string& ca_pub_pem, const PqCert& cert) {
     auto data = canonical_bytes(cert);
     std::vector<uint8_t> sig;
     try { sig = from_base64(cert.signature); }
-    catch (...) { return false; } // invalid base64 → invalid cert
+    catch (...) { return false; } 
     return mldsa_verify(ca_pub_pem, data, sig);
 }
 

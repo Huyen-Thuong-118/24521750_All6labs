@@ -4,19 +4,12 @@
 
 namespace aes2 {
 
-// Increment 128-bit big-endian counter: byte 15 is least significant.
 void CtrMode::increment(uint8_t ctr[16]) noexcept {
     for (int i = 15; i >= 0; --i) {
         if (++ctr[i] != 0) break; // no carry → stop
     }
-    // If all bytes wrapped (extremely rare — 2^128 blocks), counter silently
-    // wraps to 0. The caller must ensure this never happens in practice
-    // (= never process more than 2^128 × 16 bytes with one IV).
 }
 
-// process: encrypt or decrypt len bytes using CTR mode.
-// S_i = AES_encrypt(K, ctr_i);  output[i*16 .. +16] = input[i*16 ..] XOR S_i
-// Partial final block: XOR only the remaining (len % 16) bytes of keystream.
 void CtrMode::process(const uint8_t* in, uint8_t* out, size_t len,
                       const uint8_t iv[16]) const
 {

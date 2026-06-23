@@ -116,8 +116,6 @@ std::vector<uint8_t> mlkem_decaps(const std::string& priv_pem,
         throw std::runtime_error("ML-KEM decapsulate_init failed");
     }
 
-    // Implicit rejection: if ct is malformed, OpenSSL returns pseudo-random ss.
-    // We always return a 32-byte value — caller detects mismatch by comparing ss.
     size_t sslen = OSSL_ML_KEM_SHARED_SECRET_BYTES;
     std::vector<uint8_t> ss(sslen);
     EVP_PKEY_decapsulate(ctx, ss.data(), &sslen,

@@ -104,27 +104,21 @@ ExtResult extend(const std::vector<uint8_t>& hash_h,
     if (hash_h.size() != 32)
         throw std::runtime_error("hash_h must be exactly 32 bytes");
 
-    // Restore SHA-256 internal state from the stolen digest
     uint32_t h[8];
     for (int i = 0; i < 8; i++)
         h[i] = ((uint32_t)hash_h[4*i]   << 24) | ((uint32_t)hash_h[4*i+1] << 16)
              | ((uint32_t)hash_h[4*i+2] <<  8) |  (uint32_t)hash_h[4*i+3];
 
-    // SHA-256 internal padding that was applied to (key || msg)
     size_t inner_len = key_len + msg.size();
     auto pad = sha256_padding(inner_len);
 
-    // Number of bytes already absorbed by the saved state
-    size_t processed = inner_len + pad.size(); // multiple of 64 by construction
+    size_t processed = inner_len + pad.size(); 
 
-    // Build forged_message = msg || pad(key||msg) || extension
     std::vector<uint8_t> forged_message;
     forged_message.insert(forged_message.end(), msg.begin(), msg.end());
     forged_message.insert(forged_message.end(), pad.begin(), pad.end());
     forged_message.insert(forged_message.end(), extension.begin(), extension.end());
 
-    // Compute SHA256(key || forged_message)
-    //  = SHA256_continue(state=h, data=extension, already_processed=processed)
     auto forged_hash = sha256_from_state(h,
                                          extension.data(), extension.size(),
                                          processed);
@@ -136,7 +130,6 @@ bool verify_attack(const std::vector<uint8_t>& key,
                    const std::vector<uint8_t>& forged_message,
                    const std::vector<uint8_t>& forged_hash)
 {
-    // Full SHA256(key || forged_message) using our manual impl
     uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
 
