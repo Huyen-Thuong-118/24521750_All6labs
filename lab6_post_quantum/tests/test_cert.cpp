@@ -31,7 +31,7 @@ TEST_CASE("PqCert: verify with wrong CA key fails", "[cert][negative]") {
     REQUIRE_FALSE(pq::cert_verify(ca_pub2, cert));
 }
 
-TEST_CASE("PqCert: tampered subject → verify fails", "[cert][negative]") {
+TEST_CASE("PqCert: tampered subject -verify fails", "[cert][negative]") {
     auto [ca_priv, ca_pub] = pq::mldsa_keygen();
     auto [sub_priv, sub_pub] = pq::mldsa_keygen();
 
@@ -40,7 +40,7 @@ TEST_CASE("PqCert: tampered subject → verify fails", "[cert][negative]") {
     REQUIRE_FALSE(pq::cert_verify(ca_pub, cert));
 }
 
-TEST_CASE("PqCert: tampered public_key → verify fails", "[cert][negative]") {
+TEST_CASE("PqCert: tampered public_key -verify fails", "[cert][negative]") {
     auto [ca_priv, ca_pub] = pq::mldsa_keygen();
     auto [sub_priv, sub_pub] = pq::mldsa_keygen();
 
@@ -50,7 +50,7 @@ TEST_CASE("PqCert: tampered public_key → verify fails", "[cert][negative]") {
     REQUIRE_FALSE(pq::cert_verify(ca_pub, cert));
 }
 
-TEST_CASE("PqCert: tampered issuer → verify fails", "[cert][negative]") {
+TEST_CASE("PqCert: tampered issuer -verify fails", "[cert][negative]") {
     auto [ca_priv, ca_pub] = pq::mldsa_keygen();
     auto [sub_priv, sub_pub] = pq::mldsa_keygen();
 
@@ -59,7 +59,7 @@ TEST_CASE("PqCert: tampered issuer → verify fails", "[cert][negative]") {
     REQUIRE_FALSE(pq::cert_verify(ca_pub, cert));
 }
 
-TEST_CASE("PqCert: tampered signature → verify fails", "[cert][negative]") {
+TEST_CASE("PqCert: tampered signature -verify fails", "[cert][negative]") {
     auto [ca_priv, ca_pub] = pq::mldsa_keygen();
     auto [sub_priv, sub_pub] = pq::mldsa_keygen();
 

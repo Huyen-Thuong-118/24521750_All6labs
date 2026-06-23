@@ -1,4 +1,4 @@
-// ECDSA-P256 tests — keygen, sign/verify, RFC 6979 determinism, KAT
+// ECDSA-P256 tests -keygen, sign/verify, RFC 6979 determinism, KAT
 #include <catch2/catch_test_macros.hpp>
 #include "signer.hpp"
 #include <vector>
@@ -83,7 +83,7 @@ TEST_CASE("ECDSA verify: garbage signature returns false (no throw)", "[ecdsa][n
 
 // ─── RFC 6979 determinism ────────────────────────────────────────────────────
 
-TEST_CASE("ECDSA: RFC 6979 — same key+msg produces identical signatures", "[ecdsa][rfc6979]") {
+TEST_CASE("ECDSA: RFC 6979 -same key+msg produces identical signatures", "[ecdsa][rfc6979]") {
     auto [priv, pub] = sig5::keygen(sig5::Algo::ECDSA_P256);
     auto msg = bytes("deterministic ECDSA test");
     auto sig1 = sig5::sign_msg(sig5::Algo::ECDSA_P256, priv, msg);
@@ -91,14 +91,14 @@ TEST_CASE("ECDSA: RFC 6979 — same key+msg produces identical signatures", "[ec
     REQUIRE(sig1 == sig2);  // byte-for-byte identical: RFC 6979
 }
 
-TEST_CASE("ECDSA: RFC 6979 — different messages produce different sigs", "[ecdsa][rfc6979]") {
+TEST_CASE("ECDSA: RFC 6979 -different messages produce different sigs", "[ecdsa][rfc6979]") {
     auto [priv, pub] = sig5::keygen(sig5::Algo::ECDSA_P256);
     auto sig1 = sig5::sign_msg(sig5::Algo::ECDSA_P256, priv, bytes("msg A"));
     auto sig2 = sig5::sign_msg(sig5::Algo::ECDSA_P256, priv, bytes("msg B"));
     REQUIRE(sig1 != sig2);
 }
 
-TEST_CASE("ECDSA: RFC 6979 — different keys produce different sigs", "[ecdsa][rfc6979]") {
+TEST_CASE("ECDSA: RFC 6979 -different keys produce different sigs", "[ecdsa][rfc6979]") {
     auto [priv1, pub1] = sig5::keygen(sig5::Algo::ECDSA_P256);
     auto [priv2, pub2] = sig5::keygen(sig5::Algo::ECDSA_P256);
     auto msg = bytes("same message");

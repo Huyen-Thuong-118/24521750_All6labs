@@ -6,14 +6,10 @@
 
 namespace aes2 {
 
-// xtime: multiply by x (i.e., by 0x02) in GF(2^8)
-// = left shift 1 bit; if bit 7 was set, XOR with 0x1B (reducing polynomial)
 constexpr uint8_t xtime(uint8_t x) noexcept {
     return static_cast<uint8_t>((x << 1) ^ ((x >> 7) * 0x1Bu));
 }
 
-// GF(2^8) multiplication: repeated xtime + XOR
-// Implemented as a 8-step Russian peasant multiply — constant-time for fixed b
 constexpr uint8_t gf_mul(uint8_t a, uint8_t b) noexcept {
     uint8_t r = 0;
     for (int i = 0; i < 8; ++i) {
@@ -26,7 +22,6 @@ constexpr uint8_t gf_mul(uint8_t a, uint8_t b) noexcept {
     return r;
 }
 
-// Convenience multipliers used in MixColumns / InvMixColumns
 constexpr uint8_t mul2(uint8_t x)  noexcept { return xtime(x); }
 constexpr uint8_t mul3(uint8_t x)  noexcept { return xtime(x) ^ x; }
 constexpr uint8_t mul9(uint8_t x)  noexcept { return xtime(xtime(xtime(x))) ^ x; }

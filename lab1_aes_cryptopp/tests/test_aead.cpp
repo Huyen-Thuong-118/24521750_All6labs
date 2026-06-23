@@ -69,21 +69,21 @@ TEST_CASE("GCM empty plaintext with AAD: tag still valid", "[aead][gcm]") {
 
 // ── GCM — authentication failures (fail-closed) ──────────────────────────────
 
-TEST_CASE("GCM tampered ciphertext → authentication fail, no plaintext output", "[aead][gcm][negative]") {
+TEST_CASE("GCM tampered ciphertext -authentication fail, no plaintext output", "[aead][gcm][negative]") {
     auto pt  = std::vector<uint8_t>(16, 0xAA);
     auto enc = aes1::encrypt(aes1::Mode::GCM, KEY, GCM_IV, pt);
     enc.ciphertext[0] ^= 0xFF;
     REQUIRE_THROWS(aes1::decrypt(aes1::Mode::GCM, KEY, GCM_IV, enc.ciphertext, enc.tag));
 }
 
-TEST_CASE("GCM tampered tag → authentication fail", "[aead][gcm][negative]") {
+TEST_CASE("GCM tampered tag -authentication fail", "[aead][gcm][negative]") {
     auto pt  = std::vector<uint8_t>(16, 0xBB);
     auto enc = aes1::encrypt(aes1::Mode::GCM, KEY, GCM_IV, pt);
     enc.tag[0] ^= 0xFF;
     REQUIRE_THROWS(aes1::decrypt(aes1::Mode::GCM, KEY, GCM_IV, enc.ciphertext, enc.tag));
 }
 
-TEST_CASE("GCM wrong AAD on decrypt → authentication fail", "[aead][gcm][negative]") {
+TEST_CASE("GCM wrong AAD on decrypt -authentication fail", "[aead][gcm][negative]") {
     auto pt      = str_bytes("secret message");
     auto correct = str_bytes("correct-header");
     auto wrong   = str_bytes("wrong-header");
@@ -91,7 +91,7 @@ TEST_CASE("GCM wrong AAD on decrypt → authentication fail", "[aead][gcm][negat
     REQUIRE_THROWS(aes1::decrypt(aes1::Mode::GCM, KEY, GCM_IV, enc.ciphertext, enc.tag, wrong));
 }
 
-TEST_CASE("GCM missing AAD on decrypt → authentication fail", "[aead][gcm][negative]") {
+TEST_CASE("GCM missing AAD on decrypt -authentication fail", "[aead][gcm][negative]") {
     auto pt  = str_bytes("data");
     auto aad = str_bytes("header");
     auto enc = aes1::encrypt(aes1::Mode::GCM, KEY, GCM_IV, pt, aad);
@@ -119,21 +119,21 @@ TEST_CASE("CCM round-trip with AAD", "[aead][ccm]") {
 
 // ── CCM — authentication failures ────────────────────────────────────────────
 
-TEST_CASE("CCM tampered ciphertext → authentication fail", "[aead][ccm][negative]") {
+TEST_CASE("CCM tampered ciphertext -authentication fail", "[aead][ccm][negative]") {
     auto pt  = std::vector<uint8_t>(16, 0xDD);
     auto enc = aes1::encrypt(aes1::Mode::CCM, KEY, CCM_IV, pt);
     enc.ciphertext[0] ^= 0x01;
     REQUIRE_THROWS(aes1::decrypt(aes1::Mode::CCM, KEY, CCM_IV, enc.ciphertext, enc.tag));
 }
 
-TEST_CASE("CCM tampered tag → authentication fail", "[aead][ccm][negative]") {
+TEST_CASE("CCM tampered tag -authentication fail", "[aead][ccm][negative]") {
     auto pt  = std::vector<uint8_t>(16, 0xEE);
     auto enc = aes1::encrypt(aes1::Mode::CCM, KEY, CCM_IV, pt);
     enc.tag[0] ^= 0xFF;
     REQUIRE_THROWS(aes1::decrypt(aes1::Mode::CCM, KEY, CCM_IV, enc.ciphertext, enc.tag));
 }
 
-TEST_CASE("CCM wrong AAD on decrypt → authentication fail", "[aead][ccm][negative]") {
+TEST_CASE("CCM wrong AAD on decrypt -authentication fail", "[aead][ccm][negative]") {
     auto pt      = str_bytes("payload");
     auto correct = str_bytes("aad-ok");
     auto wrong   = str_bytes("aad-xx");

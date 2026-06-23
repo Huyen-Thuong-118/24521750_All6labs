@@ -95,10 +95,9 @@ static std::vector<uint8_t> load_secret(int argc, char** argv,
     std::string p = get_arg(argc, argv, file_flag);
     if (!h.empty()) return hex_to_bytes(h);
     if (!p.empty()) return read_file(p);
-    return {};  // empty = not provided
+    return {}; 
 }
 
-// ── Sidecar JSON (stored as <outfile>.json) ───────────────────────────────────
 static std::string sidecar_path(const std::string& out) { return out + ".json"; }
 
 static void write_sidecar(const std::string& out, aes1::Mode m,
@@ -124,7 +123,6 @@ static json read_sidecar(const std::string& ct_path) {
     return j;
 }
 
-// ── Nonce reuse check (for CTR / CCM / GCM) ───────────────────────────────────
 static void check_nonce_reuse(const std::string& out, const std::vector<uint8_t>& iv) {
     auto sp = sidecar_path(out);
     if (!fs::exists(sp)) return;  // first use

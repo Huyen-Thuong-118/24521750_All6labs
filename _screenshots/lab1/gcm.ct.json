@@ -1,0 +1,6 @@
+{
+  "aad": "686561646572",
+  "alg": "AES-GCM",
+  "iv": "cafebabefacedbaddecaf888",
+  "tag": "c6435346f2f8c2e74f3eb8168091837e"
+}

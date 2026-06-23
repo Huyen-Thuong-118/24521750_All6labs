@@ -121,7 +121,7 @@ TEST_CASE("Cross-val: random 1000-byte message", "[crossval][random]") {
     REQUIRE(our_ct == ref_ct);
 }
 
-TEST_CASE("Cross-val: 5 random keys × 5 random messages", "[crossval][random]") {
+TEST_CASE("Cross-val: 5 random keys x 5 random messages", "[crossval][random]") {
     std::mt19937 rng(2024);
     std::uniform_int_distribution<int> dist(0, 255);
     std::uniform_int_distribution<int> len_dist(1, 256);
