@@ -1,0 +1,23 @@
+{
+  "_source": "NIST FIPS 186-4 and RFC 6979 parameter reference",
+  "ecdsa_p256": {
+    "curve": "secp256r1 (P-256)",
+    "hash": "SHA-256",
+    "nonce": "RFC 6979 deterministic",
+    "sig_format": "DER (r,s each 32 bytes + DER encoding overhead)",
+    "typical_sig_bytes": "70-72"
+  },
+  "rsa_pss_3072": {
+    "modulus_bits": 3072,
+    "hash": "SHA-256",
+    "mgf": "MGF1-SHA256",
+    "salt_len": 32,
+    "sig_bytes": 384
+  },
+  "round_trip_tests": [
+    { "name": "ECDSA empty message",  "algo": "ecdsa-p256",   "msg_len": 0,       "expect": "sign+verify=true" },
+    { "name": "ECDSA 1 byte",         "algo": "ecdsa-p256",   "msg_len": 1,       "expect": "sign+verify=true" },
+    { "name": "ECDSA 1 MB",           "algo": "ecdsa-p256",   "msg_len": 1048576, "expect": "sign+verify=true" },
+    { "name": "RSA-PSS 1 KB",         "algo": "rsa-pss-3072", "msg_len": 1024,    "expect": "sign+verify=true" }
+  ]
+}

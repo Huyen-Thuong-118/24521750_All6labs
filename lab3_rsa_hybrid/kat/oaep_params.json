@@ -1,0 +1,16 @@
+{
+  "_source": "RFC 8017 RSAES-OAEP parameters and boundary check",
+  "_note": "Round-trip tests; actual ciphertext is randomized per run",
+  "oaep_params": {
+    "hash": "SHA-256",
+    "mgf": "MGF1-SHA256",
+    "modulus_bits": 3072,
+    "max_plaintext_bytes": 318,
+    "formula": "k - 2*hLen - 2 = 384 - 64 - 2 = 318"
+  },
+  "boundary_tests": [
+    { "name": "exactly max length",  "pt_len": 318, "expect": "success" },
+    { "name": "one byte over limit", "pt_len": 319, "expect": "hybrid_mode" },
+    { "name": "1 MB file",           "pt_len": 1048576, "expect": "hybrid_mode" }
+  ]
+}

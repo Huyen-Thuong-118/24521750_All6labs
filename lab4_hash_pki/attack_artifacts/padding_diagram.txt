@@ -1,0 +1,53 @@
+SHA-256 Padding for message M of length L bytes:
+
++---------------+----+---------------------------+------------------+
+|  M (L bytes)  | 80 |  zero padding ...         |  L*8 (64-bit BE) |
++---------------+----+---------------------------+------------------+
++------ total length must be congruent to 0 (mod 64 bytes) --------+
+
+Example: key (16 bytes) || msg "hello" (5 bytes) = 21 bytes total
+
++------------------+----+------- 38 zero bytes -------+----+------+
+|  key || "hello"  | 80 | 00 00 00 00 ... 00 00 00 00 | 00 |  A8  |
+| (21 bytes = 0x15)| 1B |                             |  HI|  LO  |
++------------------+----+-----------------------------+----+------+
+ Byte 0x00..0x14    0x15  0x16..0x37                   0x38  0x3F
+                                                        |------------- 0x00 0x00 0x00 0x00
+                                                                       0x00 0x00 0x00 0xA8
+                                                                       (= 168 bits = 21 bytes * 8)
+Total padded: 64 bytes = exactly 1 SHA-256 block
+
+Length-Extension exploits:
+After computing H = SHA256(key||msg), the SHA-256 internal state
+is exactly the 8 x uint32 chaining values (a,b,c,d,e,f,g,h) = H.
+We can initialize a NEW SHA-256 from those registers and continue
+hashing arbitrary data => forged_H = SHA256(key||msg||padding||ext)
+
+Attack flow:
+
+  ORIGINAL (server computes):                FORGED (attacker computes without key):
+
+  IV (standard SHA-256 init)                 H = observed MAC = internal state after block 1
+  |                                          |
+  v                                          v
+  [Block 1: key||msg||padding] --> H         [Block 2: extension||padding2] --> H'
+  |                                          |
+  v                                          v
+  Output: MAC = H                            Output: forged_MAC = H'
+
+  Server later checks: SHA256(key || forged_msg) = ?
+  forged_msg = (original_msg || original_padding || extension)
+
+  SHA256(key || original_msg || original_padding || extension)
+  = SHA256 of [Block1: key||msg||pad] then [Block2: extension||pad2]
+  = continues from state H (same as forged_MAC computation!)
+  => forged_MAC is VALID
+
+Why HMAC is safe:
+
+  HMAC-SHA256(k, m) = SHA256(k XOR opad || SHA256(k XOR ipad || m))
+                                           \_______________________/
+                                                   inner hash
+  The outer SHA-256 takes (k XOR opad || inner_hash) as input.
+  To extend, attacker would need to compute inner_hash FIRST,
+  which requires knowing k. So length-extension cannot apply.

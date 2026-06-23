@@ -1,0 +1,13 @@
+Subject:   /CN=example.lab4.test/O=Cryptography Lab/C=VN
+Issuer:    /CN=example.lab4.test/O=Cryptography Lab/C=VN
+NotBefore: 2026-06-23 11:32:57 UTC
+NotAfter:  2027-06-23 11:32:57 UTC
+SigAlgo:   ecdsa-with-SHA256
+SPKI:      id-ecPublicKey (256 bits)
+Serial:    -1
+IsCA:      yes
+SANs:
+  DNS:example.lab4.test
+KeyUsage:
+  Digital Signature
+  Key Encipherment

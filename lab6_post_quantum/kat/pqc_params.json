@@ -1,0 +1,28 @@
+{
+  "_source": "NIST FIPS 204 (ML-DSA) and FIPS 203 (ML-KEM) parameters",
+  "ml_dsa_44": {
+    "security_level": 2,
+    "classical_equiv": "~128-bit",
+    "public_key_bytes": 1312,
+    "secret_key_bytes": 2560,
+    "signature_bytes": 2420,
+    "deterministic": true,
+    "note": "No nonce issue unlike ECDSA (no rejection-sampling timing leak)"
+  },
+  "ml_kem_512": {
+    "security_level": 1,
+    "classical_equiv": "~128-bit",
+    "public_key_bytes": 800,
+    "secret_key_bytes": 1632,
+    "ciphertext_bytes": 768,
+    "shared_secret_bytes": 32,
+    "fo_transform": "implicit rejection on bad ciphertext"
+  },
+  "round_trip_tests": [
+    { "name": "ML-DSA-44 short msg",  "msg": "hello ML-DSA",        "expect_sig_bytes": 2420 },
+    { "name": "ML-DSA-44 empty msg",  "msg": "",                     "expect_sig_bytes": 2420 },
+    { "name": "ML-DSA-44 64KB msg",   "msg_len": 65536,              "expect_sig_bytes": 2420 },
+    { "name": "ML-KEM-512 encaps",    "expect_ct_bytes": 768,        "expect_ss_bytes": 32 },
+    { "name": "ML-KEM-512 tamper ct", "flip_ct_byte": 0,             "expect": "implicit_rejection" }
+  ]
+}

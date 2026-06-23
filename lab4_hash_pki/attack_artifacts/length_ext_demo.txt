@@ -1,0 +1,42 @@
+=== SHA-256 Length-Extension Attack Demo ===
+
+Setup:
+  secret_key   = DEADBEEFCAFEBABE0011223344556677  (16 bytes, unknown to attacker)
+  original_msg = "hello"
+  naive_MAC    = SHA256(key || msg)
+
+What attacker knows:
+  - original_msg = "hello"
+  - len(key) = 16
+  - MAC = a7dc55e924f29b29a3c8f8244d337e4e595bd5cdb3679c8260915e1e3efb82e3
+
+Attack (no knowledge of key):
+  extension   = "&admin=1"
+  forged_msg  = "hello" || SHA256_padding(16+5) || "&admin=1"
+
+  [Forged message bytes]
+  68656c6c6f  "hello"
+  80          padding start
+  00...00     zero padding (42 bytes)
+  a8          bit-length field (168 bits = 21 bytes * 8)
+  2661646d696e3d31  "&admin=1"
+
+  forged_msg_hex = 68656c6c6f800000000000000000000000000000000000000000000000000000000000000000000000000000000000a82661646d696e3d31
+
+  Command used:
+  hashtool extend --hash a7dc55e924f29b29a3c8f8244d337e4e595bd5cdb3679c8260915e1e3efb82e3 \
+                  --keylen 16 --msg 68656c6c6f --ext 2661646d696e3d31
+
+  Forged hash = dad217c748bf768605a6766c7e36a11bbf5c40aa5a91542e3c6f41d8922f2ae8
+
+Verification:
+  SHA256(key || forged_msg) = dad217c748bf768605a6766c7e36a11bbf5c40aa5a91542e3c6f41d8922f2ae8
+  Matches forged hash       = TRUE
+
+Result: ATTACK SUCCEEDS
+
+Mitigation: Use HMAC-SHA256 instead of SHA256(key||msg)
+  HMAC(k,m) = SHA256(k XOR opad || SHA256(k XOR ipad || m))
+  Length-extension on outer hash requires forging inner hash first → impossible
+  The attacker cannot set the outer SHA-256 initial state to the HMAC output
+  because the output = SHA256(outerBlock || innerHash), not a raw SHA-256 state.
