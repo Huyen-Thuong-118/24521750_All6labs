@@ -352,11 +352,26 @@ thích*. Các file phụ được liệt kê gọn ở cuối để không bỏ 
 - **`SanPham.cs`** — sản phẩm: `GiaBan`/`GiaNhap`, `SoLuongTon`, `TonKhoBanDau`, `MucTonThap`,
   `TrangThai` ("Hoat dong"/"Ngung ban"), `MaDanhMuc`.
 - **`GiaoDichKho.cs`** — **sổ cái kho**: mỗi thay đổi tồn là một dòng (tồn trước/sau, loại,
-  liên kết đơn/phiếu). Cho phép **đối soát**.
-- Các model còn lại (`GioHang`, `ChiTietGioHang`, `DiaChi`, `ThongBao`, `ThanhToan`,
-  `VanChuyen`, `LichSuVanChuyen`, `PhieuNhapKho`, `ChiTietPhieuNhap`, `PhieuXuatKho`,
-  `ChiTietPhieuXuat`, `DanhMucSanPham`, `PhanQuyen`, `AuditLog`, `SystemErrorLog`, `Chat*`)
-  ánh xạ 1-1 với bảng cùng tên; đọc `AppDbContext.OnModelCreating` để thấy quan hệ.
+  liên kết đơn/phiếu). Cho phép **đối soát** (so tồn thực với tổng các dòng sổ cái).
+
+Các model còn lại ánh xạ 1-1 với bảng cùng tên; đây là mục đích của từng cái để bạn không
+phải đoán qua tên. Muốn thấy quan hệ/khóa ngoại, đọc `AppDbContext.OnModelCreating`.
+
+| Model | Đại diện cho | Điểm cần nhớ |
+|-------|--------------|--------------|
+| `GioHang` / `ChiTietGioHang` | Giỏ hàng của khách và từng dòng sản phẩm trong giỏ | Tách "giỏ" (thuộc về ai) khỏi "món trong giỏ" (số lượng từng sản phẩm) |
+| `DiaChi` | Một địa chỉ trong **sổ địa chỉ** của khách | Đơn hàng ưu tiên tham chiếu địa chỉ này thay vì gõ tay |
+| `ThongBao` | Một thông báo lưu trong DB | Đi kèm đẩy realtime qua `OrderHub`; xem lại được khi mở app |
+| `ThanhToan` | Một giao dịch thanh toán của đơn | Trạng thái `Completed` chặn thanh toán lặp; COD ghi ngay, online ghi khi có IPN |
+| `VanChuyen` | Vận đơn 1-1 với `DonHang` | Có `MaVanDon` unique + `ConcurrencyVersion` (chống đua như đơn) |
+| `LichSuVanChuyen` | Từng mốc thay đổi trạng thái giao hàng | Là "nhật ký hành trình" để dựng timeline tracking |
+| `PhieuNhapKho` / `ChiTietPhieuNhap` | Phiếu nhập hàng vào kho và từng dòng | Duyệt phiếu → gọi `IncreaseStockAsync` → ghi sổ cái |
+| `PhieuXuatKho` / `ChiTietPhieuXuat` | Phiếu xuất hàng khỏi kho và từng dòng | Duyệt phiếu → `DecreaseStockAsync` (chống xuất quá tồn) |
+| `DanhMucSanPham` | Danh mục để phân loại sản phẩm | `SanPham.MaDanhMuc` trỏ về đây |
+| `PhanQuyen` | Bảng vai trò (`customer/staff/manager/admin`) | Tránh hardcode số role; `AuthService` tra tên từ đây |
+| `AuditLog` | Nhật ký **thao tác** (ai làm gì, trước/sau) | Cột `DuLieuTruoc/DuLieuSau/Metadata` kiểu `jsonb`; nhiều chỉ mục để tra nhanh |
+| `SystemErrorLog` | Nhật ký **lỗi hệ thống** | Ghi tự động khi validation/exception xảy ra, kèm `traceId` |
+| `Chat*` (`ChatConversation`, `ChatMessage`, `ChatParticipant`...) | Hội thoại/tin nhắn chat nội bộ | Unique index đảm bảo hội thoại 1-1 không trùng; cascade khi xóa hội thoại |
 
 ---
 
@@ -426,17 +441,34 @@ thích*. Các file phụ được liệt kê gọn ở cuối để không bỏ 
   đúng cổng, `SetSession`, rồi `ShowShell`/`ShowCustomerShell`. Ghi log `[Desktop/Login]`.
 - **Ai gọi:** app khi mở, và nút Đăng nhập.
 
-### B6. Các Service/Page client khác (tóm tắt)
-- `Services/SessionGuard.cs` — xử lý **401 tập trung**: khi API trả 401 → xóa session → về
-  Login (tránh lặp code khắp nơi).
-- `Services/OrderStatusDisplay.cs` — map `pending/processing/...` → chữ tiếng Việt + màu
-  (client hiển thị, đồng bộ với `OrderStatuses` phía server).
-- `Services/AppLog.cs` — log `[Desktop/<khu vực>]` (Info/Warn/Error).
-- `Models/AppModels.cs`, `Models/CustomerApiModels.cs` — lớp đọc JSON trả về (VD
-  `LoginResponseApi`).
-- `Views/Pages/*` — mỗi màn hình chức năng; xử lý gọi API + binding dữ liệu (Products, Cart,
-  CreateOrder, Payment, CustomerOrders, OrderTracking, Address, Profile, Notification,
-  Dashboard, Imports, Logs, Chat, UserAccess...).
+### B6. Các Service client còn lại (vai trò + vì sao cần)
+
+| File | Vai trò | Vì sao tách riêng |
+|------|---------|-------------------|
+| `Services/SessionGuard.cs` | Xử lý **401 tập trung**: API trả 401 → xóa session → về Login | Nếu không có, mỗi Page phải tự bắt 401 → lặp code, dễ sót; gom về một chỗ để hành vi "hết phiên" luôn nhất quán |
+| `Services/OrderStatusDisplay.cs` | Map `pending/processing/...` → chữ tiếng Việt + màu | Giữ **quy ước hiển thị** ở một chỗ, đồng bộ với `OrderStatuses` phía server; đổi màu/chữ chỉ sửa một file |
+| `Services/AppLog.cs` | Ghi log `[Desktop/<khu vực>]` (Info/Warn/Error) | Chuẩn hóa định dạng log để dễ lọc khi gỡ lỗi phía client |
+| `Services/SigninBackground.cs` | Hỗ trợ hiển thị nền màn hình đăng nhập | Tách phần trang trí khỏi logic đăng nhập |
+| `Services/DemoData.cs` | Dữ liệu mẫu để demo nhanh khi chưa có DB thật | Chỉ phục vụ trình diễn, không nằm trong luồng thật |
+
+### B7. Nhóm Models client
+- `Models/AppModels.cs`, `Models/CustomerApiModels.cs` — các lớp **đọc JSON** API trả về
+  (VD `LoginResponseApi`). Đây là "khuôn nhận hàng" phía client; chỉ chứa các trường client
+  thực sự dùng, nên **có thể khác** DTO phía server dù mô tả cùng dữ liệu.
+
+### B8. Các Page chức năng (`Views/Pages/*`)
+
+Mỗi Page là một màn hình = cặp `*.xaml` (bố cục) + `*.xaml.cs` (gọi API + binding). Khuôn
+chung của mọi Page: `OnAppearing` nạp dữ liệu → hiển thị → thao tác người dùng gọi API →
+cập nhật UI. Nhóm theo vai trò:
+
+| Nhóm | Các Page tiêu biểu | Làm gì |
+|------|--------------------|--------|
+| Xác thực | `LoginPage`, `RegisterPage`, `ProfilePage` | Đăng nhập/đăng ký/hồ sơ; lấy & giữ JWT |
+| Mua sắm (khách) | `CustomerHomePage`, `ProductsPage`, `ProductDetailPage`, `CartPage`, `CreateOrderPage`, `PaymentPage` | Xem sản phẩm → giỏ → đặt đơn → thanh toán |
+| Theo dõi đơn (khách) | `CustomerOrdersPage`, `OrderTrackingPage`, `OrderDetailPage` | Xem đơn của mình + timeline realtime |
+| Quản trị (nhân sự) | `OrdersPage`, `ProductFormPage`, `ImportsPage`, `DashboardPage`, `UserAccessPage`, `LogsPage` | Quản lý đơn/sản phẩm/kho, xem thống kê, quản lý tài khoản, xem log |
+| Dùng chung | `AddressPage`, `NotificationPage`, `ChatPage` | Sổ địa chỉ, thông báo, chat nội bộ |
 
 ---
 
